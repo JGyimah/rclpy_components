@@ -12,8 +12,6 @@
   <maintainer email="jude.gyimah87@gmail.com">fr0b0</maintainer>
   <license>Apache-2.0</license>
 
-  <buildtool_depend>ament_python</buildtool_depend>
-
   <depend>rclpy</depend>
   <depend>composition_interfaces</depend>
   <depend>ament_index_python</depend>
