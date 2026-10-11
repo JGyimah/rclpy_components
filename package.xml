@@ -9,7 +9,8 @@
     unloads nodes on request, over the standard composition_interfaces
     contract, so the stock ros2 component CLI drives it.
   </description>
-  <maintainer email="jude.gyimah87@gmail.com">fr0b0</maintainer>
+  <author email="jude.gyimah87@gmail.com">Jude Gyimah</author>
+  <maintainer email="jude.gyimah87@gmail.com">Jude Gyimah</maintainer>
   <license>Apache-2.0</license>
 
   <depend>rclpy</depend>
