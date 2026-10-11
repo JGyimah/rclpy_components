@@ -72,10 +72,15 @@ def test_rejects_a_target_without_a_class(tmp_path):
         register_nodes('p', {'p::A': 'p.a'}, directory=str(tmp_path))
 
 
-def test_the_file_is_commented_for_a_human_reader(tmp_path):
-    register_nodes('p', {'p::A': 'p.a:A'}, directory=str(tmp_path))
+def test_the_file_holds_entries_and_nothing_else(tmp_path):
+    # `ros2component` reads a registration file as `line.split(';')[0]` with no
+    # handling for comments or blank lines, so either would be reported as a
+    # component type by the tooling this format exists for.
+    register_nodes('p', {'p::A': 'p.a:A', 'p::B': 'p.b:B'}, directory=str(tmp_path))
 
-    content = read_entry(tmp_path, 'p')
+    lines = read_entry(tmp_path, 'p').splitlines()
 
-    assert content.startswith('#')
-    assert 'register_nodes' in content
+    assert lines == ['p::A;p.a:A', 'p::B;p.b:B']
+    for line in lines:
+        assert not line.startswith('#')
+        assert line.strip()
