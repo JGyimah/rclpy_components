@@ -1,4 +1,19 @@
-"""Discovery of rclpy components through the ament resource index.
+# Copyright 2026 Jude Gyimah
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+Discovery of rclpy components through the ament resource index.
 
 This mirrors how ``rclcpp_components`` finds C++ components. There, CMake
 writes one resource file per package listing ``class_name;library_path``, and
@@ -25,21 +40,22 @@ class Component:
 
     @property
     def module(self) -> str:
-        """The module half of the target."""
-        return self.target.split(":", 1)[0]
+        """Return the module half of the target."""
+        return self.target.split(':', 1)[0]
 
     @property
     def class_name(self) -> str:
-        """The class half of the target."""
-        parts = self.target.split(":", 1)
-        return parts[1] if len(parts) > 1 else ""
+        """Return the class half of the target."""
+        parts = self.target.split(':', 1)
+        return parts[1] if len(parts) > 1 else ''
 
     def __repr__(self) -> str:
-        return f"Component({self.package}/{self.name} -> {self.target})"
+        return f'Component({self.package}/{self.name} -> {self.target})'
 
 
 def components_in(package: str) -> list[Component]:
-    """Return the components a single package registers.
+    """
+    Return the components a single package registers.
 
     An unregistered package yields nothing rather than raising, since asking
     about a package that declares no components is a normal thing to do.
@@ -60,7 +76,8 @@ def all_components() -> list[Component]:
 
 
 def resolve(package: str, name: str) -> str:
-    """Turn a package and plugin name into an import target.
+    """
+    Turn a package and plugin name into an import target.
 
     The registry is consulted first, so a component can be loaded by the name
     it registered. Failing that, the name is taken to be an import target
@@ -71,11 +88,11 @@ def resolve(package: str, name: str) -> str:
         if component.name == name:
             return component.target
 
-    if ":" in name:
-        return name if "." in name.split(":", 1)[0] else f"{package}.{name}"
+    if ':' in name:
+        return name if '.' in name.split(':', 1)[0] else f'{package}.{name}'
 
     raise LookupError(
-        f"package {package!r} registers no component named {name!r}; "
+        f'package {package!r} registers no component named {name!r}; '
         f"either register it or load it as 'module:Class'"
     )
 
@@ -85,10 +102,10 @@ def _parse(package: str, content: str) -> list[Component]:
 
     for line in content.splitlines():
         line = line.strip()
-        if not line or line.startswith("#"):
+        if not line or line.startswith('#'):
             continue
 
-        name, _, target = line.partition(";")
+        name, _, target = line.partition(';')
         if not target:
             # A malformed line is skipped rather than failing the whole
             # package: one bad entry should not hide the others.

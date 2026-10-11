@@ -1,4 +1,19 @@
-"""A component container for rclpy nodes.
+# Copyright 2026 Jude Gyimah
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""
+A component container for rclpy nodes.
 
 ``rclcpp_components`` provides a container process that loads C++ nodes into
 itself on request. It has no rclpy counterpart, because it works by dlopening
@@ -25,8 +40,8 @@ import importlib
 import inspect
 import traceback
 
-import rclpy
 from composition_interfaces.srv import ListNodes, LoadNode, UnloadNode
+import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -34,7 +49,7 @@ from rclpy.parameter import Parameter
 from .registry import resolve
 
 #: The node name the container takes unless told otherwise.
-DEFAULT_NAME = "rclpy_container"
+DEFAULT_NAME = 'rclpy_container'
 
 
 class ComponentContainer(Node):
@@ -48,11 +63,11 @@ class ComponentContainer(Node):
 
         # These three share the node's default mutually-exclusive callback
         # group, which is what serialises access to the two fields above.
-        self.create_service(LoadNode, "~/_container/load_node", self._load)
-        self.create_service(UnloadNode, "~/_container/unload_node", self._unload)
-        self.create_service(ListNodes, "~/_container/list_nodes", self._list)
+        self.create_service(LoadNode, '~/_container/load_node', self._load)
+        self.create_service(UnloadNode, '~/_container/unload_node', self._unload)
+        self.create_service(ListNodes, '~/_container/list_nodes', self._list)
 
-        self.get_logger().info(f"rclpy component container ready as {self.get_name()}")
+        self.get_logger().info(f'rclpy component container ready as {self.get_name()}')
 
     # The executor the container itself was added to, which is also where
     # loaded components go.
@@ -63,7 +78,7 @@ class ComponentContainer(Node):
     def _load(self, request, response):
         try:
             target = resolve(request.package_name, request.plugin_name)
-            module_name, class_name = target.split(":", 1)
+            module_name, class_name = target.split(':', 1)
 
             module = importlib.import_module(module_name)
             cls = getattr(module, class_name)
@@ -72,7 +87,7 @@ class ComponentContainer(Node):
 
             if not isinstance(instance, Node):
                 raise TypeError(
-                    f"{target} produced a {type(instance).__name__}, not an rclpy Node"
+                    f'{target} produced a {type(instance).__name__}, not an rclpy Node'
                 )
 
             self._host.add_node(instance)
@@ -85,17 +100,18 @@ class ComponentContainer(Node):
             response.full_node_name = instance.get_fully_qualified_name()
             response.unique_id = unique_id
 
-            self.get_logger().info(f"loaded {response.full_node_name} as {unique_id}")
+            self.get_logger().info(f'loaded {response.full_node_name} as {unique_id}')
 
         except Exception as e:  # noqa: BLE001 - reported to the caller
-            self.get_logger().error(f"loading {request.plugin_name}: {traceback.format_exc()}")
+            self.get_logger().error(f'loading {request.plugin_name}: {traceback.format_exc()}')
             response.success = False
             response.error_message = str(e)
 
         return response
 
     def _instantiate(self, cls, request):
-        """Construct a component, passing the requested options when it can.
+        """
+        Construct a component, passing the requested options when it can.
 
         A component that accepts ``**kwargs`` and forwards them to ``Node``
         receives the name, namespace, parameters and remappings the caller
@@ -107,9 +123,9 @@ class ComponentContainer(Node):
         if not _accepts_options(cls):
             if options:
                 raise TypeError(
-                    f"{cls.__name__} takes no constructor arguments, so it cannot apply "
+                    f'{cls.__name__} takes no constructor arguments, so it cannot apply '
                     f"{', '.join(sorted(options))}; give it `def __init__(self, **kwargs)` "
-                    f"forwarding to super().__init__()"
+                    f'forwarding to super().__init__()'
                 )
             return cls()
 
@@ -117,7 +133,7 @@ class ComponentContainer(Node):
         # container's command line. Without this, a container started with
         # `-r __node:=x` renames every component it loads to x, because rclpy
         # applies global arguments to every node built in the process.
-        options.setdefault("use_global_arguments", False)
+        options.setdefault('use_global_arguments', False)
 
         return cls(**options)
 
@@ -126,7 +142,7 @@ class ComponentContainer(Node):
 
         if instance is None:
             response.success = False
-            response.error_message = f"no component loaded with unique_id {request.unique_id}"
+            response.error_message = f'no component loaded with unique_id {request.unique_id}'
             self.get_logger().warning(response.error_message)
             return response
 
@@ -134,7 +150,7 @@ class ComponentContainer(Node):
         instance.destroy_node()
 
         response.success = True
-        self.get_logger().info(f"unloaded component {request.unique_id}")
+        self.get_logger().info(f'unloaded component {request.unique_id}')
         return response
 
     def _list(self, request, response):
@@ -165,21 +181,21 @@ def _node_options(request) -> dict:
     options = {}
 
     if request.node_name:
-        options["node_name"] = request.node_name
+        options['node_name'] = request.node_name
 
     if request.node_namespace:
-        options["namespace"] = request.node_namespace
+        options['namespace'] = request.node_namespace
 
     if request.parameters:
-        options["parameter_overrides"] = [
+        options['parameter_overrides'] = [
             Parameter.from_parameter_msg(p) for p in request.parameters
         ]
 
     if request.remap_rules:
-        args = ["--ros-args"]
+        args = ['--ros-args']
         for rule in request.remap_rules:
-            args += ["-r", rule]
-        options["cli_args"] = args
+            args += ['-r', rule]
+        options['cli_args'] = args
 
     return options
 
@@ -200,5 +216,5 @@ def main(args=None):
         rclpy.shutdown()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
