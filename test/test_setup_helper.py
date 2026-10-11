@@ -27,24 +27,24 @@ def read_entry(tmp_path, package):
 
 def test_writes_one_line_per_component(tmp_path):
     entries = register_nodes(
-        'py_plugin_executor',
+        'my_package',
         {
-            'featx_plugin::Boot': 'py_plugin_executor.boot:Boot',
-            'featx_plugin::InitChecks': 'py_plugin_executor.init_checks:InitChecks',
+            'my_components::Talker': 'my_package.talker:Talker',
+            'my_components::Listener': 'my_package.listener:Listener',
         },
         directory=str(tmp_path),
     )
 
-    content = read_entry(tmp_path, 'py_plugin_executor')
+    content = read_entry(tmp_path, 'my_package')
 
-    assert 'featx_plugin::Boot;py_plugin_executor.boot:Boot' in content
-    assert 'featx_plugin::InitChecks;py_plugin_executor.init_checks:InitChecks' in content
+    assert 'my_components::Talker;my_package.talker:Talker' in content
+    assert 'my_components::Listener;my_package.listener:Listener' in content
 
     # And the data_files entry installs it where the registry looks.
     assert entries == [
         (
             f'share/ament_index/resource_index/{RESOURCE_GROUP}',
-            [os.path.join(str(tmp_path), STAGING_DIR, 'py_plugin_executor')],
+            [os.path.join(str(tmp_path), STAGING_DIR, 'my_package')],
         )
     ]
 

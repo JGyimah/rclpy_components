@@ -28,57 +28,57 @@ def test_parse_reads_name_and_target():
     content = (
         '# a comment\n'
         '\n'
-        'featx_plugin::Boot;py_plugin_executor.boot:Boot\n'
-        'featx_plugin::InitChecks;py_plugin_executor.init_checks:InitChecks\n'
+        'my_components::Talker;my_package.talker:Talker\n'
+        'my_components::Listener;my_package.listener:Listener\n'
     )
 
-    components = _parse('py_plugin_executor', content)
+    components = _parse('my_package', content)
 
     assert [c.name for c in components] == [
-        'featx_plugin::Boot',
-        'featx_plugin::InitChecks',
+        'my_components::Talker',
+        'my_components::Listener',
     ]
-    assert components[0].target == 'py_plugin_executor.boot:Boot'
-    assert components[0].module == 'py_plugin_executor.boot'
-    assert components[0].class_name == 'Boot'
-    assert components[0].package == 'py_plugin_executor'
+    assert components[0].target == 'my_package.talker:Talker'
+    assert components[0].module == 'my_package.talker'
+    assert components[0].class_name == 'Talker'
+    assert components[0].package == 'my_package'
 
 
 def test_parse_skips_a_malformed_line():
     # One bad entry must not hide the others.
-    content = 'nonsense\nfeatx_plugin::Boot;py_plugin_executor.boot:Boot\n'
+    content = 'nonsense\nmy_components::Talker;my_package.talker:Talker\n'
 
-    components = _parse('py_plugin_executor', content)
+    components = _parse('my_package', content)
 
     assert len(components) == 1
-    assert components[0].name == 'featx_plugin::Boot'
+    assert components[0].name == 'my_components::Talker'
 
 
 def test_parse_tolerates_whitespace():
-    components = _parse('p', '  featx_plugin::Boot ;  p.boot:Boot  \n')
+    components = _parse('p', '  my_components::Talker ;  p.talker:Talker  \n')
 
-    assert components[0].name == 'featx_plugin::Boot'
-    assert components[0].target == 'p.boot:Boot'
+    assert components[0].name == 'my_components::Talker'
+    assert components[0].target == 'p.talker:Talker'
 
 
 def test_resolve_falls_back_to_a_bare_target():
     # A package that was never registered can still be loaded by import path,
     # with the package name supplied as the module prefix.
-    assert resolve('py_plugin_executor', 'boot:Boot') == 'py_plugin_executor.boot:Boot'
+    assert resolve('my_package', 'talker:Talker') == 'my_package.talker:Talker'
 
 
 def test_resolve_accepts_a_fully_qualified_target():
-    assert resolve('anything', 'py_plugin_executor.boot:Boot') == 'py_plugin_executor.boot:Boot'
+    assert resolve('anything', 'my_package.talker:Talker') == 'my_package.talker:Talker'
 
 
 def test_resolve_rejects_an_unregistered_plain_name():
     # Without a registry entry and without a colon there is nothing to import.
     with pytest.raises(LookupError, match='registers no component'):
-        resolve('py_plugin_executor', 'Boot')
+        resolve('my_package', 'Talker')
 
 
 def test_component_repr_names_both_halves():
-    c = Component('p', 'featx_plugin::Boot', 'p.boot:Boot')
+    c = Component('p', 'my_components::Talker', 'p.talker:Talker')
 
-    assert 'featx_plugin::Boot' in repr(c)
-    assert 'p.boot:Boot' in repr(c)
+    assert 'my_components::Talker' in repr(c)
+    assert 'p.talker:Talker' in repr(c)

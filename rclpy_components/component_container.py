@@ -22,7 +22,7 @@ container closes that gap by serving the same three services over the same
 names, so the stock ``ros2 component`` CLI drives it:
 
     ros2 run rclpy_components component_container_mt
-    ros2 component load /rclpy_container py_plugin_executor featx_plugin::Boot
+    ros2 component load /rclpy_container my_package my_components::Talker
     ros2 component list
     ros2 component unload /rclpy_container 1
 

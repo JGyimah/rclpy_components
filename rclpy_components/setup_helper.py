@@ -27,7 +27,7 @@ plugin package calls :func:`register_nodes` and splices the result into its
             ("share/ament_index/resource_index/packages", ["resource/" + package_name]),
             ("share/" + package_name, ["package.xml"]),
             *register_nodes(package_name, {
-                "featx_plugin::Boot": "py_plugin_executor.boot:Boot",
+                "my_components::Talker": "my_package.talker:Talker",
             }),
         ],
         ...
