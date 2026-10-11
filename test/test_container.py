@@ -20,6 +20,10 @@ composition_interfaces cannot be imported, so the imports below are plain.
 """
 
 from composition_interfaces.srv import ListNodes, LoadNode, UnloadNode
+# Sorted here rather than with the package imports below: `fixtures` is not
+# an application import name, so the linter groups it with the installed
+# ones.
+from fixtures.components import Example, NoOptions
 import pytest
 from rcl_interfaces.msg import Parameter as ParameterMsg
 from rcl_interfaces.msg import ParameterType, ParameterValue
@@ -31,12 +35,11 @@ from rclpy_components.component_container import (
     _node_options,
     ComponentContainer,
 )
-from rclpy_components.examples import Example, NoOptions
 
-#: The shipped examples, and a real class from the package that is not a Node.
-EXAMPLE = 'rclpy_components.examples:Example'
-EXAMPLE_NO_OPTIONS = 'rclpy_components.examples:NoOptions'
-NOT_A_NODE = 'rclpy_components.examples:NotAComponent'
+#: The fixture components, and a real class among them that is not a Node.
+EXAMPLE = 'fixtures.components:Example'
+EXAMPLE_NO_OPTIONS = 'fixtures.components:NoOptions'
+NOT_A_NODE = 'fixtures.components:NotAComponent'
 
 
 @pytest.fixture
@@ -55,7 +58,7 @@ def container():
 
 
 def load(container, target, **fields):
-    """Load by qualified target, since these examples register no name."""
+    """Load by qualified target, since these fixtures register no name."""
     request = LoadNode.Request()
     request.package_name = 'rclpy_components'
     request.plugin_name = target
@@ -193,6 +196,6 @@ def test_node_options_disables_global_arguments(container):
 def test_a_class_with_no_init_does_not_look_configurable():
     # object.__init__ has a (*args, **kwargs) signature, so a class that
     # defines no constructor would otherwise appear to accept node options.
-    from rclpy_components.examples import NotAComponent
+    from fixtures.components import NotAComponent
 
     assert not _accepts_options(NotAComponent)

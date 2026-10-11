@@ -13,12 +13,13 @@
 # limitations under the License.
 
 """
-Minimal components, showing the two constructor shapes a container meets.
+Components the container tests load, one per constructor shape it meets.
 
 A component that accepts ``**kwargs`` and forwards them to ``Node`` can be
 given the name, namespace, parameters and remappings from a ``LoadNode``
 request. One that takes no arguments cannot, and the container says so rather
-than dropping the options silently — so prefer :class:`Example`.
+than dropping the options silently — so a real component should look like
+:class:`Example`.
 """
 
 from rclpy.node import Node

@@ -18,7 +18,7 @@ ros2 run rclpy_components component_container_mt
 ```
 
 ```
-ros2 component load /rclpy_container rclpy_components rclpy_components.examples:Example
+ros2 component load /rclpy_container my_package my_package.talker:Talker
 ros2 component list
 ros2 component unload /rclpy_container 1
 ```
@@ -59,9 +59,11 @@ class Talker(Node):
 A component whose constructor takes no arguments can still be loaded, but it
 cannot be given options. The container refuses such a request rather than
 dropping the options silently, so prefer the shape above.
-[`rclpy_components/examples.py`](rclpy_components/examples.py) has both, and a
+[`test/fixtures/components.py`](test/fixtures/components.py) has both, and a
 plain class that is not a `Node` for contrast — the container refuses that one
-outright, since there would be nothing to add to the executor.
+outright, since there would be nothing to add to the executor. The package
+installs a container and no components of its own, as `rclcpp_components`
+does.
 
 ## Registering components
 
