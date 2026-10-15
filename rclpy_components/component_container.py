@@ -58,7 +58,7 @@ class ComponentContainer(Node):
     def __init__(self, name: str = DEFAULT_NAME) -> None:
         super().__init__(name)
 
-        self._components: dict[int, Node] = {}
+        self._components: dict[int, tuple[str, Node]] = {}
         self._next_id = 1
 
         # These three share the node's default mutually-exclusive callback
@@ -76,38 +76,71 @@ class ComponentContainer(Node):
         return self.executor
 
     def _load(self, request, response):
+        # Each stage reports its own failure, so the caller is told whether the
+        # component could not be found, not be imported, or not be constructed.
         try:
             target = resolve(request.package_name, request.plugin_name)
+        except LookupError as e:
+            return self._refuse(response, str(e))
+
+        try:
             module_name, class_name = target.split(':', 1)
-
-            module = importlib.import_module(module_name)
-            cls = getattr(module, class_name)
-
-            instance = self._instantiate(cls, request)
-
-            if not isinstance(instance, Node):
-                raise TypeError(
-                    f'{target} produced a {type(instance).__name__}, not an rclpy Node'
-                )
-
-            self._host.add_node(instance)
-
-            unique_id = self._next_id
-            self._next_id += 1
-            self._components[unique_id] = instance
-
-            response.success = True
-            response.full_node_name = instance.get_fully_qualified_name()
-            response.unique_id = unique_id
-
-            self.get_logger().info(f'loaded {response.full_node_name} as {unique_id}')
-
+            cls = getattr(importlib.import_module(module_name), class_name)
         except Exception as e:  # noqa: BLE001 - reported to the caller
-            self.get_logger().error(f'loading {request.plugin_name}: {traceback.format_exc()}')
-            response.success = False
-            response.error_message = str(e)
+            return self._refuse(response, f'importing {target}: {e}', trace=True)
 
+        try:
+            instance = self._instantiate(cls, request)
+        except Exception as e:  # noqa: BLE001 - reported to the caller
+            return self._refuse(response, f'instantiating {target}: {e}', trace=True)
+
+        if not isinstance(instance, Node):
+            return self._refuse(
+                response,
+                f'{target} produced a {type(instance).__name__}, not an rclpy Node',
+            )
+
+        # The name is known only once the node exists, since remap rules are
+        # applied during construction, so a clash can only be found by building
+        # the component and throwing it away again.
+        full_name = instance.get_fully_qualified_name()
+
+        if self._name_taken(full_name):
+            instance.destroy_node()
+            return self._refuse(
+                response, f'a node named {full_name} is already in this process'
+            )
+
+        self._host.add_node(instance)
+
+        unique_id = self._next_id
+        self._next_id += 1
+        self._components[unique_id] = (full_name, instance)
+
+        response.success = True
+        response.full_node_name = full_name
+        response.unique_id = unique_id
+
+        self.get_logger().info(f'loaded {full_name} as {unique_id}')
         return response
+
+    def _refuse(self, response, message: str, *, trace: bool = False):
+        """Report a load the container will not complete."""
+        if trace:
+            self.get_logger().error(f'{message}\n{traceback.format_exc()}')
+        else:
+            self.get_logger().error(message)
+
+        response.success = False
+        response.error_message = message
+        return response
+
+    def _name_taken(self, full_name: str) -> bool:
+        """Whether this fully qualified name is already in use in the process."""
+        if full_name == self.get_fully_qualified_name():
+            return True
+
+        return any(name == full_name for name, _ in self._components.values())
 
     def _instantiate(self, cls, request):
         """
@@ -141,13 +174,15 @@ class ComponentContainer(Node):
         return cls(**options)
 
     def _unload(self, request, response):
-        instance = self._components.pop(request.unique_id, None)
+        loaded = self._components.pop(request.unique_id, None)
 
-        if instance is None:
+        if loaded is None:
             response.success = False
             response.error_message = f'no component loaded with unique_id {request.unique_id}'
             self.get_logger().warning(response.error_message)
             return response
+
+        _, instance = loaded
 
         self._host.remove_node(instance)
         instance.destroy_node()
@@ -157,10 +192,11 @@ class ComponentContainer(Node):
         return response
 
     def _list(self, request, response):
+        # The names are the ones recorded at load time rather than read back
+        # from the nodes, so a component that destroyed itself cannot turn a
+        # listing into an exception.
         response.unique_ids = list(self._components.keys())
-        response.full_node_names = [
-            instance.get_fully_qualified_name() for instance in self._components.values()
-        ]
+        response.full_node_names = [name for name, _ in self._components.values()]
         return response
 
 

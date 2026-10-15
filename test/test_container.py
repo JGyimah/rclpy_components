@@ -149,7 +149,7 @@ def test_parameters_reach_a_configurable_component(container):
     # rclpy needs a parameter declared before it can be read; declaring one
     # that has an override takes the override's value, which is what proves
     # the request reached the node.
-    loaded = container._components[response.unique_id]
+    _, loaded = container._components[response.unique_id]
     loaded.declare_parameter('vel_max', 0.0)
 
     assert loaded.get_parameter('vel_max').value == pytest.approx(1.5)
@@ -170,6 +170,50 @@ def test_a_component_that_names_itself_is_moved_into_a_namespace(container):
 
     assert response.success, response.error_message
     assert response.full_node_name == '/sensors/fixed_name'
+
+
+def test_a_second_component_cannot_take_a_name_already_in_the_process(container):
+    first = load(container, EXAMPLE_FIXED_NAME)
+    assert first.success, first.error_message
+
+    second = load(container, EXAMPLE_FIXED_NAME)
+
+    assert not second.success
+    assert 'already in this process' in second.error_message
+    # The rejected component is destroyed rather than left running unlisted.
+    listing = container._list(ListNodes.Request(), ListNodes.Response())
+    assert list(listing.unique_ids) == [first.unique_id]
+
+
+def test_a_component_cannot_take_the_container_s_own_name(container):
+    response = load(container, EXAMPLE_FIXED_NAME, node_name=container.get_name())
+
+    assert not response.success
+    assert 'already in this process' in response.error_message
+
+
+def test_the_same_component_can_be_loaded_twice_under_different_names(container):
+    first = load(container, EXAMPLE_FIXED_NAME, node_name='left')
+    second = load(container, EXAMPLE_FIXED_NAME, node_name='right')
+
+    assert first.success and second.success, second.error_message
+    assert first.full_node_name == '/left'
+    assert second.full_node_name == '/right'
+
+
+def test_a_failure_says_which_stage_it_came_from(container):
+    missing_module = load(container, 'fixtures.no_such_module:Thing')
+    assert not missing_module.success
+    assert missing_module.error_message.startswith('importing ')
+
+    missing_class = load(container, 'fixtures.components:NoSuchClass')
+    assert not missing_class.success
+    assert missing_class.error_message.startswith('importing ')
+
+    # NoOptions cannot be given a name, so it fails while being constructed.
+    cannot_construct = load(container, EXAMPLE_NO_OPTIONS, node_name='renamed')
+    assert not cannot_construct.success
+    assert cannot_construct.error_message.startswith('instantiating ')
 
 
 def test_accepts_options_distinguishes_the_two_shapes():
@@ -206,7 +250,7 @@ def test_global_arguments_do_not_leak_into_a_component(container):
     assert response.success, response.error_message
     assert response.full_node_name.endswith('example')
 
-    loaded = container._components[response.unique_id]
+    _, loaded = container._components[response.unique_id]
     assert loaded.get_name() == 'example'
 
 
