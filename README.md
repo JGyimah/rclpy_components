@@ -42,8 +42,9 @@ from the executor and destroys it.
 ## Writing a component
 
 A component is an ordinary rclpy `Node`. Accept `**kwargs` and forward them to
-`Node`, and the name, namespace, parameters and remappings from the load
-request reach the node:
+`Node`, and the parameters and remappings from the load request reach the node.
+Name it whatever you like: the name and namespace from the request arrive as
+remap rules, so they are applied whether or not the component names itself.
 
 ```python
 from rclpy.node import Node
@@ -52,8 +53,7 @@ from rclpy.node import Node
 class Talker(Node):
 
     def __init__(self, **kwargs):
-        kwargs.setdefault('node_name', 'talker')
-        super().__init__(**kwargs)
+        super().__init__('talker', **kwargs)
 ```
 
 A component whose constructor takes no arguments can still be loaded, but it

@@ -38,6 +38,7 @@ from rclpy_components.component_container import (
 
 #: The fixture components, and a real class among them that is not a Node.
 EXAMPLE = 'fixtures.components:Example'
+EXAMPLE_FIXED_NAME = 'fixtures.components:FixedName'
 EXAMPLE_NO_OPTIONS = 'fixtures.components:NoOptions'
 NOT_A_NODE = 'fixtures.components:NotAComponent'
 
@@ -154,6 +155,23 @@ def test_parameters_reach_a_configurable_component(container):
     assert loaded.get_parameter('vel_max').value == pytest.approx(1.5)
 
 
+def test_a_component_that_names_itself_is_renamed_anyway(container):
+    # Node takes the name positionally, so a component passing one of its own
+    # cannot be given `node_name=` -- that call is a TypeError for two values
+    # of one argument. The request's name reaches it as a remap rule instead.
+    response = load(container, EXAMPLE_FIXED_NAME, node_name='renamed')
+
+    assert response.success, response.error_message
+    assert response.full_node_name == '/renamed'
+
+
+def test_a_component_that_names_itself_is_moved_into_a_namespace(container):
+    response = load(container, EXAMPLE_FIXED_NAME, node_namespace='/sensors')
+
+    assert response.success, response.error_message
+    assert response.full_node_name == '/sensors/fixed_name'
+
+
 def test_accepts_options_distinguishes_the_two_shapes():
     assert _accepts_options(Example)
     assert not _accepts_options(NoOptions)
@@ -169,9 +187,14 @@ def test_node_options_translates_a_request():
 
     options = _node_options(request)
 
-    assert options['node_name'] == 'n'
-    assert options['namespace'] == '/ns'
-    assert options['cli_args'] == ['--ros-args', '-r', 'a:=b']
+    # The name and namespace are remap rules, ahead of the caller's own rules,
+    # and nothing is passed as a constructor argument that Node takes
+    # positionally.
+    assert options['cli_args'] == [
+        '--ros-args', '-r', '__node:=n', '-r', '__ns:=/ns', '-r', 'a:=b',
+    ]
+    assert 'node_name' not in options
+    assert 'namespace' not in options
 
 
 # TestGlobalArgumentsDoNotLeak guards a bug a live run found: a container

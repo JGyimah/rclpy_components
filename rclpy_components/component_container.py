@@ -115,16 +115,19 @@ class ComponentContainer(Node):
 
         A component that accepts ``**kwargs`` and forwards them to ``Node``
         receives the name, namespace, parameters and remappings the caller
-        asked for. One that takes no arguments is constructed bare, and any
-        options the caller sent are refused rather than silently dropped.
+        asked for. It does not have to accept a name: the name and namespace
+        arrive as remap rules, so a component that names itself is renamed all
+        the same. One that takes no arguments at all is constructed bare, and
+        any options the caller sent are refused rather than silently dropped.
         """
         options = _node_options(request)
 
         if not _accepts_options(cls):
-            if options:
+            asked_for = _requested(request)
+            if asked_for:
                 raise TypeError(
                     f'{cls.__name__} takes no constructor arguments, so it cannot apply '
-                    f"{', '.join(sorted(options))}; give it `def __init__(self, **kwargs)` "
+                    f"{', '.join(asked_for)}; give it `def __init__(self, **kwargs)` "
                     f'forwarding to super().__init__()'
                 )
             return cls()
@@ -180,24 +183,48 @@ def _node_options(request) -> dict:
     """Translate a LoadNode request into rclpy Node constructor arguments."""
     options = {}
 
-    if request.node_name:
-        options['node_name'] = request.node_name
-
-    if request.node_namespace:
-        options['namespace'] = request.node_namespace
-
     if request.parameters:
         options['parameter_overrides'] = [
             Parameter.from_parameter_msg(p) for p in request.parameters
         ]
 
-    if request.remap_rules:
+    # The name and namespace travel as remap rules rather than as constructor
+    # arguments, which is how rclcpp_components applies them. Remapping happens
+    # below the constructor, so it renames a component that passes a fixed name
+    # of its own to Node — and `node_name=` cannot reach one of those at all,
+    # since Node takes the name positionally and the call would be a TypeError
+    # for two values of one argument.
+    rules = []
+
+    if request.node_name:
+        rules.append(f'__node:={request.node_name}')
+
+    if request.node_namespace:
+        rules.append(f'__ns:={request.node_namespace}')
+
+    rules += list(request.remap_rules)
+
+    if rules:
         args = ['--ros-args']
-        for rule in request.remap_rules:
+        for rule in rules:
             args += ['-r', rule]
         options['cli_args'] = args
 
     return options
+
+
+def _requested(request) -> list[str]:
+    """Name the LoadNode fields a request actually set."""
+    return [
+        field
+        for field, value in (
+            ('node_name', request.node_name),
+            ('node_namespace', request.node_namespace),
+            ('parameters', request.parameters),
+            ('remap_rules', request.remap_rules),
+        )
+        if value
+    ]
 
 
 def main(args=None):
