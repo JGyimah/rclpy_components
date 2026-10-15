@@ -71,6 +71,53 @@ the reason. The log level is reachable only by calling the load service
 directly: `ros2 component load --log-level` passes the value as a string into
 a `uint8` field, which aborts the CLI before the request is sent (as of Iron).
 
+## Hosting C++ and Python components together
+
+A container can host only components of its own language, and that is not a
+limitation this package can lift: loading a C++ component means dlopening a
+library through `class_loader` and getting back an `rclcpp` node, which no
+rclpy executor can spin, and a C++ container cannot host an rclpy node either,
+because `rclpy` cannot be handed the context that container was built on.
+
+`component_container_federated` makes one node answer for both anyway. It
+hosts nothing itself: it serves the composition contract and forwards each
+request to a real container chosen by the language the component is registered
+for, under ids of its own.
+
+```
+ros2 run rclpy_components component_container_mt
+ros2 run rclcpp_components component_container_mt --ros-args -r __node:=cpp_container
+```
+
+```
+ros2 run rclpy_components component_container_federated --ros-args \
+    -p python_container:=/rclpy_container -p cpp_container:=/cpp_container
+```
+
+```
+ros2 component load /federated_container my_package my_ns::CppNode
+ros2 component load /federated_container my_package my_package.talker:Talker
+ros2 component list
+```
+
+The language comes from the resource index: a component registered under
+`rclcpp_components` goes to the C++ container, one registered under
+`rclpy_components` or named as an importable `module:Class` target goes to the
+Python one, and anything registered under neither is refused. The delegates
+are ordinary parameters, so they can be set with `ros2 param set` as well as
+on the command line.
+
+This is federation, not composition: the components run in the delegates'
+processes, not in the federator's. For the Python ones that costs nothing,
+since rclpy has no intra-process communication to lose; the C++ ones keep
+theirs among themselves inside their own container. `ros2 component list`
+shows both containers, so a component appears twice — once under the id the
+federator issued, once under the id its real container issued.
+
+Only what the federator loaded is listed under it. A component loaded by
+talking to a delegate directly has no id in the federator and is not listed
+there.
+
 ## Writing a component
 
 A component is an ordinary rclpy `Node`. Accept `**kwargs` and forward them to

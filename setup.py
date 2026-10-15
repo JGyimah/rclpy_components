@@ -29,6 +29,10 @@ setup(
             # so one that blocks in a callback holds up only itself.
             'component_container_isolated ='
             ' rclpy_components.component_container:isolated_main',
+            # The federating container hosts nothing itself: it forwards each
+            # component to a container of the right language.
+            'component_container_federated ='
+            ' rclpy_components.federated_container:main',
         ],
     },
 )

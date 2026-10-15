@@ -53,17 +53,21 @@ class Component:
         return f'Component({self.package}/{self.name} -> {self.target})'
 
 
-def components_in(package: str) -> list[Component]:
+def components_in(package: str, *, group: str = RESOURCE_GROUP) -> list[Component]:
     """
     Return the components a single package registers.
 
     An unregistered package yields nothing rather than raising, since asking
     about a package that declares no components is a normal thing to do.
+
+    The group is the rclpy one unless named otherwise. The C++ group has the
+    same line format, so it parses, but only the names mean anything there:
+    its targets are library paths rather than import targets.
     """
-    if not has_resource(RESOURCE_GROUP, package):
+    if not has_resource(group, package):
         return []
 
-    content, _ = get_resource(RESOURCE_GROUP, package)
+    content, _ = get_resource(group, package)
     return _parse(package, content)
 
 
