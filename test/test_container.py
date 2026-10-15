@@ -216,6 +216,14 @@ def test_a_failure_says_which_stage_it_came_from(container):
     assert cannot_construct.error_message.startswith('instantiating ')
 
 
+def test_a_component_joins_the_container_s_context(container):
+    response = load(container, EXAMPLE)
+    assert response.success, response.error_message
+
+    _, loaded = container._components[response.unique_id]
+    assert loaded.context is container.context
+
+
 def test_accepts_options_distinguishes_the_two_shapes():
     assert _accepts_options(Example)
     assert not _accepts_options(NoOptions)

@@ -171,6 +171,11 @@ class ComponentContainer(Node):
         # applies global arguments to every node built in the process.
         options.setdefault('use_global_arguments', False)
 
+        # Components join the container's context rather than the global one,
+        # so a container built on a context of its own — a test, or a process
+        # that runs two of them -- hosts components on that same context.
+        options.setdefault('context', self.context)
+
         return cls(**options)
 
     def _unload(self, request, response):
