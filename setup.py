@@ -20,11 +20,19 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            # Both names run the same multi-threaded container: a
+            # The first two names run the same multi-threaded container: a
             # single-threaded one would block its own load service behind a
             # component's callback.
             'component_container = rclpy_components.component_container:main',
             'component_container_mt = rclpy_components.component_container:main',
+            # The isolated container gives each component a thread of its own,
+            # so one that blocks in a callback holds up only itself.
+            'component_container_isolated ='
+            ' rclpy_components.component_container:isolated_main',
+            # The federating container hosts nothing itself: it forwards each
+            # component to a container of the right language.
+            'component_container_federated ='
+            ' rclpy_components.federated_container:main',
         ],
     },
 )

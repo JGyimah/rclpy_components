@@ -30,4 +30,5 @@ for module in ('rclpy', 'composition_interfaces', 'rcl_interfaces'):
         importlib.import_module(module)
     except Exception:  # noqa: BLE001 - any import failure means we cannot run
         collect_ignore.append('test_container.py')
+        collect_ignore.append('test_federated_container.py')
         break

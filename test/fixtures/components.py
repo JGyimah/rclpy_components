@@ -22,6 +22,8 @@ than dropping the options silently — so a real component should look like
 :class:`Example`.
 """
 
+import threading
+
 from rclpy.node import Node
 
 
@@ -35,6 +37,15 @@ class Example(Node):
         self.get_logger().info(f'{self.get_name()} loaded')
 
 
+class FixedName(Node):
+    """A component that names itself, which only a remap rule can rename."""
+
+    def __init__(self, **kwargs):
+        super().__init__('fixed_name', **kwargs)
+
+        self.get_logger().info(f'{self.get_name()} loaded')
+
+
 class NoOptions(Node):
     """A component that cannot be given options, for contrast."""
 
@@ -42,6 +53,19 @@ class NoOptions(Node):
         super().__init__('no_options')
 
         self.get_logger().info('no_options loaded')
+
+
+class Blocking(Node):
+    """A component whose timer callback never returns, to test isolation."""
+
+    def __init__(self, **kwargs):
+        super().__init__('blocking', **kwargs)
+
+        self.create_timer(0.0, self._wedge)
+
+    def _wedge(self):
+        self.get_logger().info('wedging this executor')
+        threading.Event().wait()
 
 
 class NotAComponent:
