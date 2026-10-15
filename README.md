@@ -37,7 +37,9 @@ variant to choose.
 
 Loading imports the registered module, instantiates the class, and adds the
 node to the container's executor so its callbacks run. Unloading removes it
-from the executor and destroys it.
+from the executor and destroys it. A load that would give two nodes in the
+process the same fully qualified name is refused, so loading one component
+twice means naming at least one of them.
 
 ## Writing a component
 
