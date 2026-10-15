@@ -1,2 +1,3 @@
+.pytest_cache/
 .rclpy_components/
 .vscode/
