@@ -38,11 +38,13 @@ module object stays alive as long as anything references it.
 
 import importlib
 import inspect
+import threading
 import traceback
 
 from composition_interfaces.srv import ListNodes, LoadNode, UnloadNode
 import rclpy
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
+from rclpy.logging import LoggingSeverity
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 
@@ -50,6 +52,29 @@ from .registry import resolve
 
 #: The node name the container takes unless told otherwise.
 DEFAULT_NAME = 'rclpy_container'
+
+#: The Node constructor flags a caller may set through ``extra_arguments``.
+#: These are the container-specific options of the composition contract; the
+#: C++ containers take a different set, since they host a different runtime.
+EXTRA_ARGUMENTS = (
+    'allow_undeclared_parameters',
+    'automatically_declare_parameters_from_overrides',
+    'enable_rosout',
+    'start_parameter_services',
+    'use_global_arguments',
+)
+
+#: Extra arguments the C++ containers take that have no rclpy counterpart,
+#: with the reason, so a request carrying one is told why rather than that it
+#: was not recognised.
+UNSUPPORTED_EXTRA_ARGUMENTS = {
+    'use_intra_process_comms': 'rclpy has no intra-process communication',
+    'forward_global_arguments': 'use_global_arguments is the rclpy spelling',
+}
+
+#: How long to wait for a component's own spin to return when it is unloaded
+#: from an isolated container.
+RELEASE_TIMEOUT = 5.0
 
 
 class ComponentContainer(Node):
@@ -69,11 +94,13 @@ class ComponentContainer(Node):
 
         self.get_logger().info(f'rclpy component container ready as {self.get_name()}')
 
-    # The executor the container itself was added to, which is also where
-    # loaded components go.
-    @property
-    def _host(self):
-        return self.executor
+    def _adopt(self, instance: Node) -> None:
+        """Give a component somewhere for its callbacks to run."""
+        self.executor.add_node(instance)
+
+    def _release(self, instance: Node) -> None:
+        """Stop a component's callbacks running."""
+        self.executor.remove_node(instance)
 
     def _load(self, request, response):
         # Each stage reports its own failure, so the caller is told whether the
@@ -90,7 +117,12 @@ class ComponentContainer(Node):
             return self._refuse(response, f'importing {target}: {e}', trace=True)
 
         try:
-            instance = self._instantiate(cls, request)
+            options = _node_options(request)
+        except ValueError as e:
+            return self._refuse(response, str(e))
+
+        try:
+            instance = self._instantiate(cls, request, options)
         except Exception as e:  # noqa: BLE001 - reported to the caller
             return self._refuse(response, f'instantiating {target}: {e}', trace=True)
 
@@ -111,7 +143,16 @@ class ComponentContainer(Node):
                 response, f'a node named {full_name} is already in this process'
             )
 
-        self._host.add_node(instance)
+        # rcl_interfaces/Log and rclpy's LoggingSeverity number the levels
+        # alike, so the field is the severity; 0 is the unset value.
+        if request.log_level:
+            try:
+                instance.get_logger().set_level(LoggingSeverity(request.log_level))
+            except ValueError:
+                instance.destroy_node()
+                return self._refuse(response, f'{request.log_level} is not a log level')
+
+        self._adopt(instance)
 
         unique_id = self._next_id
         self._next_id += 1
@@ -142,7 +183,7 @@ class ComponentContainer(Node):
 
         return any(name == full_name for name, _ in self._components.values())
 
-    def _instantiate(self, cls, request):
+    def _instantiate(self, cls, request, options):
         """
         Construct a component, passing the requested options when it can.
 
@@ -153,8 +194,6 @@ class ComponentContainer(Node):
         the same. One that takes no arguments at all is constructed bare, and
         any options the caller sent are refused rather than silently dropped.
         """
-        options = _node_options(request)
-
         if not _accepts_options(cls):
             asked_for = _requested(request)
             if asked_for:
@@ -189,12 +228,19 @@ class ComponentContainer(Node):
 
         _, instance = loaded
 
-        self._host.remove_node(instance)
+        self._release(instance)
         instance.destroy_node()
 
         response.success = True
         self.get_logger().info(f'unloaded component {request.unique_id}')
         return response
+
+    def unload_all(self) -> None:
+        """Stop and destroy every component, as on the way out of a process."""
+        for unique_id in list(self._components):
+            _, instance = self._components.pop(unique_id)
+            self._release(instance)
+            instance.destroy_node()
 
     def _list(self, request, response):
         # The names are the ones recorded at load time rather than read back
@@ -203,6 +249,58 @@ class ComponentContainer(Node):
         response.unique_ids = list(self._components.keys())
         response.full_node_names = [name for name, _ in self._components.values()]
         return response
+
+
+class IsolatedComponentContainer(ComponentContainer):
+    """
+    A container that spins each component on an executor of its own.
+
+    This is the counterpart to ``rclcpp_components``'
+    ``component_container_isolated``. A component's callbacks run on a thread
+    of its own rather than sharing the container's executor, so one component
+    that blocks in a callback cannot stop another's callbacks or the
+    container's own load service from being served.
+
+    The isolation is of callbacks, not of work: the GIL means two components
+    computing do not run at once, and nothing here makes them. What it buys is
+    that a component which blocks — on a lock, a socket, a sleep -- holds up
+    only itself.
+    """
+
+    def __init__(self, name: str = DEFAULT_NAME) -> None:
+        super().__init__(name)
+
+        self._spinners: dict[Node, tuple[SingleThreadedExecutor, threading.Thread]] = {}
+
+    def _adopt(self, instance: Node) -> None:
+        executor = SingleThreadedExecutor(context=self.context)
+        executor.add_node(instance)
+
+        # Daemon threads, so a container killed without unloading cannot hang
+        # on a component whose callback never returns.
+        thread = threading.Thread(
+            target=executor.spin, name=f'component_{instance.get_name()}', daemon=True
+        )
+
+        self._spinners[instance] = (executor, thread)
+        thread.start()
+
+    def _release(self, instance: Node) -> None:
+        executor, thread = self._spinners.pop(instance)
+
+        # shutdown() wakes the spin so it returns; the join is what makes
+        # unloading synchronous, as the caller is entitled to expect when the
+        # service replies.
+        executor.shutdown()
+        thread.join(timeout=RELEASE_TIMEOUT)
+
+        if thread.is_alive():
+            self.get_logger().warning(
+                f'{instance.get_name()} did not stop spinning within '
+                f'{RELEASE_TIMEOUT}s; its thread is left running'
+            )
+
+        executor.remove_node(instance)
 
 
 def _accepts_options(cls) -> bool:
@@ -220,9 +318,41 @@ def _accepts_options(cls) -> bool:
     return any(p.kind is p.VAR_KEYWORD for p in signature.parameters.values())
 
 
+def _extra_argument(argument) -> dict:
+    """Read one container-specific option from a LoadNode request."""
+    name = argument.name
+
+    if name in UNSUPPORTED_EXTRA_ARGUMENTS:
+        raise ValueError(
+            f'this container does not take the extra argument {name!r}: '
+            f'{UNSUPPORTED_EXTRA_ARGUMENTS[name]}'
+        )
+
+    if name not in EXTRA_ARGUMENTS:
+        raise ValueError(
+            f'{name!r} is not an extra argument this container takes; it takes '
+            f"{', '.join(EXTRA_ARGUMENTS)}"
+        )
+
+    value = Parameter.from_parameter_msg(argument).value
+
+    if not isinstance(value, bool):
+        raise ValueError(f'the extra argument {name!r} takes true or false, not {value!r}')
+
+    return {name: value}
+
+
 def _node_options(request) -> dict:
-    """Translate a LoadNode request into rclpy Node constructor arguments."""
+    """
+    Translate a LoadNode request into rclpy Node constructor arguments.
+
+    Raises ValueError for a request the container understands the shape of but
+    cannot honour, which is reported to the caller rather than logged.
+    """
     options = {}
+
+    for argument in request.extra_arguments:
+        options.update(_extra_argument(argument))
 
     if request.parameters:
         options['parameter_overrides'] = [
@@ -263,16 +393,18 @@ def _requested(request) -> list[str]:
             ('node_namespace', request.node_namespace),
             ('parameters', request.parameters),
             ('remap_rules', request.remap_rules),
+            ('extra_arguments', request.extra_arguments),
         )
         if value
     ]
 
 
-def main(args=None):
+def _run(container_type, executor_type, args) -> None:
+    """Serve one container until it is interrupted."""
     rclpy.init(args=args)
 
-    container = ComponentContainer()
-    executor = MultiThreadedExecutor()
+    container = container_type()
+    executor = executor_type()
     executor.add_node(container)
 
     try:
@@ -280,8 +412,21 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
+        container.unload_all()
         executor.shutdown()
         rclpy.shutdown()
+
+
+def main(args=None):
+    """Run a container whose components share one multi-threaded executor."""
+    _run(ComponentContainer, MultiThreadedExecutor, args)
+
+
+def isolated_main(args=None):
+    """Run a container that spins each component on an executor of its own."""
+    # The container's own executor hosts nothing but the container, so a single
+    # thread is all it needs.
+    _run(IsolatedComponentContainer, SingleThreadedExecutor, args)
 
 
 if __name__ == '__main__':

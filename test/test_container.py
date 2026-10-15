@@ -28,12 +28,14 @@ import pytest
 from rcl_interfaces.msg import Parameter as ParameterMsg
 from rcl_interfaces.msg import ParameterType, ParameterValue
 import rclpy
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
+from rclpy.logging import LoggingSeverity
 
 from rclpy_components.component_container import (
     _accepts_options,
     _node_options,
     ComponentContainer,
+    IsolatedComponentContainer,
 )
 
 #: The fixture components, and a real class among them that is not a Node.
@@ -56,6 +58,30 @@ def container():
     executor.shutdown()
     node.destroy_node()
     rclpy.shutdown()
+
+
+@pytest.fixture
+def isolated():
+    rclpy.init()
+
+    node = IsolatedComponentContainer('test_isolated_container')
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+
+    yield node
+
+    node.unload_all()
+    executor.shutdown()
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+def extra(name, value):
+    """Build a boolean extra_arguments entry, as the CLI sends them."""
+    msg = ParameterMsg()
+    msg.name = name
+    msg.value = ParameterValue(type=ParameterType.PARAMETER_BOOL, bool_value=value)
+    return msg
 
 
 def load(container, target, **fields):
@@ -222,6 +248,90 @@ def test_a_component_joins_the_container_s_context(container):
 
     _, loaded = container._components[response.unique_id]
     assert loaded.context is container.context
+
+
+def test_an_isolated_container_spins_each_component_itself(isolated):
+    response = load(isolated, EXAMPLE)
+    assert response.success, response.error_message
+
+    _, loaded = isolated._components[response.unique_id]
+    executor, thread = isolated._spinners[loaded]
+
+    # The component is on an executor of its own, not the container's.
+    assert executor is not isolated.executor
+    assert thread.is_alive()
+
+    unloaded = isolated._unload(
+        UnloadNode.Request(unique_id=response.unique_id), UnloadNode.Response()
+    )
+
+    assert unloaded.success, unloaded.error_message
+    # Unloading is synchronous: the spin has returned by the time it replies.
+    assert not thread.is_alive()
+    assert loaded not in isolated._spinners
+
+
+def test_an_isolated_container_stops_everything_it_holds(isolated):
+    first = load(isolated, EXAMPLE)
+    second = load(isolated, EXAMPLE_FIXED_NAME)
+    assert first.success and second.success, second.error_message
+
+    threads = [thread for _, thread in isolated._spinners.values()]
+    assert len(threads) == 2
+
+    isolated.unload_all()
+
+    assert not any(thread.is_alive() for thread in threads)
+    assert isolated._components == {}
+
+
+def test_a_requested_log_level_reaches_the_component(container):
+    response = load(container, EXAMPLE, log_level=LoggingSeverity.DEBUG.value)
+    assert response.success, response.error_message
+
+    _, loaded = container._components[response.unique_id]
+    assert loaded.get_logger().get_effective_level() == LoggingSeverity.DEBUG
+
+
+def test_a_log_level_that_is_not_one_is_refused(container):
+    response = load(container, EXAMPLE, log_level=7)
+
+    assert not response.success
+    assert response.error_message == '7 is not a log level'
+
+
+def test_extra_arguments_reach_the_node_constructor():
+    request = LoadNode.Request()
+    request.extra_arguments = [extra('enable_rosout', False)]
+
+    assert _node_options(request)['enable_rosout'] is False
+
+
+def test_an_unknown_extra_argument_is_refused(container):
+    response = load(container, EXAMPLE, extra_arguments=[extra('turbo', True)])
+
+    assert not response.success
+    assert "'turbo' is not an extra argument this container takes" in response.error_message
+
+
+def test_an_extra_argument_of_the_cpp_containers_says_why_it_cannot_apply(container):
+    response = load(
+        container, EXAMPLE, extra_arguments=[extra('use_intra_process_comms', True)]
+    )
+
+    assert not response.success
+    assert 'no intra-process communication' in response.error_message
+
+
+def test_an_extra_argument_that_is_not_a_flag_is_refused(container):
+    msg = ParameterMsg()
+    msg.name = 'enable_rosout'
+    msg.value = ParameterValue(type=ParameterType.PARAMETER_INTEGER, integer_value=3)
+
+    response = load(container, EXAMPLE, extra_arguments=[msg])
+
+    assert not response.success
+    assert 'takes true or false' in response.error_message
 
 
 def test_accepts_options_distinguishes_the_two_shapes():

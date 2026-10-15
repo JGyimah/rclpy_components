@@ -30,16 +30,46 @@ to place one in a namespace, remap it as usual:
 ros2 run rclpy_components component_container_mt --ros-args -r __node:=my_container
 ```
 
-`component_container` and `component_container_mt` are both installed and both
-run the same multi-threaded container. A single-threaded one would block its
-own load service behind a component's callback, so there is no single-threaded
-variant to choose.
+Three executables are installed, as `rclcpp_components` installs three.
+`component_container` and `component_container_mt` run the same
+multi-threaded container, where components share one executor: a
+single-threaded one would block its own load service behind a component's
+callback, so there is no single-threaded variant to choose.
+
+`component_container_isolated` gives each component an executor and a thread
+of its own, so a component that blocks in a callback holds up only itself:
+
+```
+ros2 run rclpy_components component_container_isolated
+```
+
+The isolation is of callbacks, not of work — the GIL means two components
+computing still do not run at once. What it buys is that one component waiting
+on a lock, a socket or a sleep leaves the others, and the container's own
+services, answering.
 
 Loading imports the registered module, instantiates the class, and adds the
-node to the container's executor so its callbacks run. Unloading removes it
-from the executor and destroys it. A load that would give two nodes in the
-process the same fully qualified name is refused, so loading one component
-twice means naming at least one of them.
+node to an executor so its callbacks run. Unloading removes it and destroys
+it. A load that would give two nodes in the process the same fully qualified
+name is refused, so loading one component twice means naming at least one of
+them.
+
+A load request may also carry a log level for the component and the
+container-specific `extra_arguments`, which here are the `Node` constructor
+flags: `allow_undeclared_parameters`,
+`automatically_declare_parameters_from_overrides`, `enable_rosout`,
+`start_parameter_services` and `use_global_arguments`.
+
+```
+ros2 component load /rclpy_container my_package my_package.talker:Talker -e enable_rosout:=false
+```
+
+An extra argument this container does not take is refused rather than dropped,
+and the two the C++ containers take that rclpy has no counterpart for —
+`use_intra_process_comms` and `forward_global_arguments` — are refused with
+the reason. The log level is reachable only by calling the load service
+directly: `ros2 component load --log-level` passes the value as a string into
+a `uint8` field, which aborts the CLI before the request is sent (as of Iron).
 
 ## Writing a component
 
