@@ -135,6 +135,11 @@ class Talker(Node):
         super().__init__('talker', **kwargs)
 ```
 
+A managed component is written the same way: a `rclpy.lifecycle.LifecycleNode`
+is a `Node`, so the container hosts one without knowing the difference and its
+`change_state` and `get_state` services come up under whatever name the
+request gave it.
+
 A component whose constructor takes no arguments can still be loaded, but it
 cannot be given options. The container refuses such a request rather than
 dropping the options silently, so prefer the shape above.

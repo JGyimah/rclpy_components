@@ -24,6 +24,7 @@ than dropping the options silently — so a real component should look like
 
 import threading
 
+from rclpy.lifecycle import LifecycleNode
 from rclpy.node import Node
 
 
@@ -44,6 +45,20 @@ class FixedName(Node):
         super().__init__('fixed_name', **kwargs)
 
         self.get_logger().info(f'{self.get_name()} loaded')
+
+
+class Lifecycle(LifecycleNode):
+    """
+    A managed component, which the container hosts like any other.
+
+    A LifecycleNode is a Node, so nothing in the container knows the
+    difference; what the test pins is that its state machine survives being
+    loaded, since a component is constructed differently from a node a process
+    creates for itself.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__('lifecycle', **kwargs)
 
 
 class NoOptions(Node):

@@ -25,7 +25,7 @@ import importlib
 
 collect_ignore = []
 
-for module in ('rclpy', 'composition_interfaces', 'rcl_interfaces'):
+for module in ('rclpy', 'rclpy.lifecycle', 'composition_interfaces', 'rcl_interfaces'):
     try:
         importlib.import_module(module)
     except Exception:  # noqa: BLE001 - any import failure means we cannot run

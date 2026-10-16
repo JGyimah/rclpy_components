@@ -41,6 +41,7 @@ from rclpy_components.component_container import (
 #: The fixture components, and a real class among them that is not a Node.
 EXAMPLE = 'fixtures.components:Example'
 EXAMPLE_FIXED_NAME = 'fixtures.components:FixedName'
+EXAMPLE_LIFECYCLE = 'fixtures.components:Lifecycle'
 EXAMPLE_NO_OPTIONS = 'fixtures.components:NoOptions'
 NOT_A_NODE = 'fixtures.components:NotAComponent'
 
@@ -332,6 +333,21 @@ def test_an_extra_argument_that_is_not_a_flag_is_refused(container):
 
     assert not response.success
     assert 'takes true or false' in response.error_message
+
+
+def test_a_lifecycle_component_keeps_its_state_machine(container):
+    response = load(container, EXAMPLE_LIFECYCLE, node_name='managed')
+
+    assert response.success, response.error_message
+    assert response.full_node_name == '/managed'
+
+    _, loaded = container._components[response.unique_id]
+    services = {service.srv_name for service in loaded.services}
+
+    # The services the state machine is driven through, named for the node as
+    # the request renamed it rather than as the component named itself.
+    assert '/managed/change_state' in services
+    assert '/managed/get_state' in services
 
 
 def test_accepts_options_distinguishes_the_two_shapes():
