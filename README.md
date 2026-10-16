@@ -1,5 +1,7 @@
 # rclpy_components
 
+[![CI](https://github.com/JGyimah/rclpy_components/actions/workflows/ci.yaml/badge.svg)](https://github.com/JGyimah/rclpy_components/actions/workflows/ci.yaml)
+
 A component container for rclpy nodes.
 
 `rclcpp_components` provides a container process that loads C++ nodes into

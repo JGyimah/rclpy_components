@@ -1,0 +1,104 @@
+# Copyright 2026 Jude Gyimah
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # A plugin package calls register_nodes from its own setup.py, where the ROS
+  # runtime may not be importable yet. That is why rclpy_components/__init__.py
+  # imports nothing and setup_helper imports only the standard library, and it
+  # is an invariant nothing else would catch breaking: every other test needs
+  # ament_index_python or rclpy, so a stray import would pass CI everywhere but
+  # here and fail in a plugin package's build.
+  build-time:
+    name: importable without ROS
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install pytest and nothing else
+        run: python -m pip install pytest
+      - name: Register components with no ROS on the path
+        run: |
+          python - <<'PY'
+          import os
+          import tempfile
+
+          from rclpy_components.setup_helper import register_nodes
+
+          directory = tempfile.mkdtemp()
+          entries = register_nodes('p', {'ns::Talker': 'p.talker:Talker'}, directory=directory)
+
+          assert entries == [(
+              'share/ament_index/resource_index/rclpy_components',
+              [os.path.join(directory, '.rclpy_components', 'p')],
+          )], entries
+
+          with open(entries[0][1][0]) as f:
+              assert f.read() == 'ns::Talker;p.talker:Talker\n', f.read()
+
+          print('register_nodes works with no ROS runtime')
+          PY
+      - name: The tests that need no ROS runtime
+        run: python -m pytest test/test_setup_helper.py -v -p no:cacheprovider
+
+  # The real thing: colcon build and test, which is what runs the container
+  # against a live rclpy and what upstream CI would run.
+  ros:
+    name: ${{ matrix.distro }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: jazzy
+            runner: ubuntu-24.04
+          - distro: rolling
+            runner: ubuntu-24.04
+    steps:
+      - uses: ros-tooling/setup-ros@0.7.19
+        with:
+          required-ros-distributions: ${{ matrix.distro }}
+      - uses: ros-tooling/action-ros-ci@0.4.8
+        with:
+          package-name: rclpy_components
+          target-ros2-distro: ${{ matrix.distro }}
+
+  # Windows is where a composition container goes wrong in ways Linux does not
+  # show: ros2/rclpy#599 has sat since 2024 on a Windows job that got stuck
+  # rather than failed, and nothing in a Linux run would have caught it. This
+  # job is allowed to fail so that a broken Windows toolchain does not block a
+  # merge, while a hang or a real failure still shows up here rather than in
+  # somebody else's pull request.
+  windows:
+    name: rolling on windows (informational)
+    runs-on: windows-2022
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - uses: ros-tooling/setup-ros@0.7.19
+        with:
+          required-ros-distributions: rolling
+      - uses: ros-tooling/action-ros-ci@0.4.8
+        with:
+          package-name: rclpy_components
+          target-ros2-distro: rolling
