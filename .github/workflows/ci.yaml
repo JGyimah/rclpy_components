@@ -78,6 +78,14 @@ jobs:
       - uses: ros-tooling/setup-ros@0.7.19
         with:
           required-ros-distributions: ${{ matrix.distro }}
+      # Without this, a distro that failed to install is silence rather than a
+      # failure: conftest.py drops the test modules whose dependencies are
+      # missing, so the run would collect the five setup-helper tests, pass,
+      # and report green having exercised no container at all.
+      - name: Fail if the distro is not actually installed
+        run: |
+          . /opt/ros/${{ matrix.distro }}/setup.sh
+          python3 -c "import ament_index_python, rclpy; print('${{ matrix.distro }} is installed')"
       - uses: ros-tooling/action-ros-ci@0.4.8
         with:
           package-name: rclpy_components

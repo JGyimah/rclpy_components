@@ -13,22 +13,48 @@
 # limitations under the License.
 
 """
-Skip the container tests where the ROS runtime cannot host them.
+Drop the test modules whose dependencies are not installed.
 
-The container needs a working rclpy and the composition_interfaces service
-definitions. Deciding that here, with collect_ignore, means the test module
-itself can use plain imports: a module-level pytest.importorskip aborts the
-whole session on pytest 6.2.5 rather than skipping just that file.
+Only the setup helper runs with nothing from ROS on the path, which is the
+point of it: a plugin package calls it from its own setup.py, where the
+runtime may not be importable yet. Everything else needs the runtime, the
+index, or the linters, and says so below.
+
+Deciding it here, with collect_ignore, means each test module can use plain
+imports: a module-level pytest.importorskip aborts the whole session on
+pytest 6.2.5 rather than skipping just that file.
+
+A module dropped for a missing dependency is silence, not a pass, so an
+environment that is meant to have ROS has to be checked for it elsewhere —
+in CI, before the tests run — or a broken one reports as a short green run.
 """
 
 import importlib
 
+#: What each test module cannot be collected without.
+REQUIREMENTS = {
+    'test_container.py': (
+        'rclpy',
+        'rclpy.lifecycle',
+        'composition_interfaces',
+        'rcl_interfaces',
+    ),
+    'test_federated_container.py': (
+        'rclpy',
+        'composition_interfaces',
+    ),
+    'test_registry.py': ('ament_index_python',),
+    'test_copyright.py': ('ament_copyright',),
+    'test_flake8.py': ('ament_flake8',),
+    'test_pep257.py': ('ament_pep257',),
+}
+
 collect_ignore = []
 
-for module in ('rclpy', 'rclpy.lifecycle', 'composition_interfaces', 'rcl_interfaces'):
-    try:
-        importlib.import_module(module)
-    except Exception:  # noqa: BLE001 - any import failure means we cannot run
-        collect_ignore.append('test_container.py')
-        collect_ignore.append('test_federated_container.py')
-        break
+for module, requirements in REQUIREMENTS.items():
+    for requirement in requirements:
+        try:
+            importlib.import_module(requirement)
+        except Exception:  # noqa: BLE001 - any import failure means we cannot run
+            collect_ignore.append(module)
+            break
