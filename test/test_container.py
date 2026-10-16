@@ -45,6 +45,10 @@ EXAMPLE_LIFECYCLE = 'fixtures.components:Lifecycle'
 EXAMPLE_NO_OPTIONS = 'fixtures.components:NoOptions'
 NOT_A_NODE = 'fixtures.components:NotAComponent'
 
+#: Long enough for a teardown to finish, short enough that a wedged one fails
+#: rather than hanging the suite.
+PATIENCE = 20.0
+
 
 @pytest.fixture
 def container():
@@ -56,7 +60,7 @@ def container():
 
     yield node
 
-    executor.shutdown()
+    assert executor.shutdown(timeout_sec=PATIENCE)
     node.destroy_node()
     rclpy.shutdown()
 
@@ -71,8 +75,10 @@ def isolated():
 
     yield node
 
+    # unload_all joins each component's thread, so a component that will not
+    # stop is reported by the container rather than left to hang the suite.
     node.unload_all()
-    executor.shutdown()
+    assert executor.shutdown(timeout_sec=PATIENCE)
     node.destroy_node()
     rclpy.shutdown()
 
