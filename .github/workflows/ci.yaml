@@ -98,6 +98,12 @@ jobs:
       - uses: ros-tooling/setup-ros@0.7.19
         with:
           required-ros-distributions: rolling
+      # vcstool imports pkg_resources, and the setuptools the runner comes with
+      # still calls pkgutil.ImpImporter, which Python 3.12 removed. The runner
+      # has 3.12, so `vcs import` dies before any of this package is fetched.
+      # Current setuptools no longer touches it.
+      - name: Give the runner a setuptools that works on Python 3.12
+        run: python -m pip install --upgrade setuptools
       - uses: ros-tooling/action-ros-ci@0.4.8
         with:
           package-name: rclpy_components
