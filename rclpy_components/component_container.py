@@ -30,10 +30,14 @@ Loading imports the registered module and instantiates the class, then adds the
 node to the container's executor so its callbacks run. Unloading removes it
 from the executor and destroys it.
 
-One difference from the C++ container is irreducible: unloading stops a
-component but does not reclaim its code. Python has no ``dlclose``, and
-dropping the module from ``sys.modules`` only clears the import cache — the
-module object stays alive as long as anything references it.
+One difference from the C++ container: unloading destroys the node, but the
+component's module stays imported. Dropping it from ``sys.modules`` would not
+be enough on its own, since the module lives as long as anything references
+it and the registry holds its class, and would not be safe anyway, since
+another loaded component may import the same module. A C extension it pulled
+in could not be unloaded whatever we did, there being no ``dlclose`` for
+those. Cycling a component is cheap and does not accumulate; the process
+simply does not give the memory back.
 """
 
 import importlib
