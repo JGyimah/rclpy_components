@@ -120,6 +120,13 @@ jobs:
       # falls back to `packaging.specifiers` when the shim is absent.
       - name: Give the runner tooling that works on Python 3.12
         run: python -m pip install --upgrade "setuptools<81" colcon-python-setup-py
+      # nose registers a distutils command, and `setup.py --help-commands`,
+      # which colcon runs to see what the package can do, loads every
+      # registered command. Importing nose imports `imp`, removed in Python
+      # 3.12, so the probe fails on a package that has nothing to do with it.
+      # nose has been unmaintained for years and nothing here uses it.
+      - name: Remove nose, which cannot be imported on Python 3.12
+        run: python -m pip uninstall -y nose || true
       - uses: ros-tooling/action-ros-ci@0.4.8
         with:
           package-name: rclpy_components
