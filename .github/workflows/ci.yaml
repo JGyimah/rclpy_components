@@ -106,20 +106,25 @@ jobs:
       - uses: ros-tooling/setup-ros@0.7.19
         with:
           required-ros-distributions: rolling
-      # The runner has Python 3.12, and the tooling it ships with sits on the
-      # wrong side of three setuptools changes at once:
+      # The runner has Python 3.12, and the ROS 2 Windows tooling sits on the
+      # wrong side of four setuptools changes at once. Each one bounds the
+      # version from a different direction:
       #
-      #   * vcstool imports pkg_resources, which setuptools 82 removed.
-      #   * colcon's setup.py probe passes --dry-run, which 81 removed.
-      #   * the setuptools it comes with calls pkgutil.ImpImporter, which
-      #     Python 3.12 removed; 80.10.2 guards that call with hasattr.
+      #   * vcstool imports pkg_resources, removed in setuptools 82.
+      #   * colcon's setup.py probe passes --dry-run, removed in 81.
+      #   * --symlink-install runs `setup.py develop --editable`, and 80 made
+      #     develop a plain Command instead of an easy_install subclass, so
+      #     the option went with the inheritance.
+      #   * pkg_resources must guard its pkgutil.ImpImporter call, which
+      #     Python 3.12 removed. 79.0.1 guards it; the runner's own does not.
       #
-      # So setuptools is pinned below 81 rather than upgraded. No setuptools
-      # in that range ships the setuptools.extern shim the probe reaches for
-      # first, which is why colcon-python-setup-py is upgraded too: 0.2.9
-      # falls back to `packaging.specifiers` when the shim is absent.
+      # 79.0.1 is the newest release that satisfies all four, so this is a
+      # pin and not an upgrade. Separately, no setuptools in that range ships
+      # the setuptools.extern shim the probe reaches for first, which is why
+      # colcon-python-setup-py comes along: 0.2.9 falls back to
+      # `packaging.specifiers` when the shim is absent.
       - name: Give the runner tooling that works on Python 3.12
-        run: python -m pip install --upgrade "setuptools<81" colcon-python-setup-py
+        run: python -m pip install --upgrade "setuptools<80" colcon-python-setup-py
       # nose registers a distutils command, and `setup.py --help-commands`,
       # which colcon runs to see what the package can do, loads every
       # registered command. Importing nose imports `imp`, removed in Python
