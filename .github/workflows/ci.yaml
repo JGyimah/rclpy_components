@@ -105,6 +105,31 @@ jobs:
       # reason that is not in that table, the suite shrinks and the run still
       # passes. This fails instead. Raise the floor when tests are added; it
       # only has to be a number the suite cannot legitimately fall below.
+      - name: Fail if the run was shorter than the suite
+        run: |
+          python3 - <<'PY'
+          import glob
+          import sys
+          import xml.etree.ElementTree as ET
+
+          FLOOR = 56
+
+          reports = glob.glob('ros_ws/build/*/pytest.xml')
+          if not reports:
+              sys.exit('no pytest.xml was written, so nothing ran')
+
+          total = sum(
+              int(suite.get('tests', 0))
+              for report in reports
+              for suite in ET.parse(report).iter('testsuite'))
+
+          if total < FLOOR:
+              sys.exit('ran %d tests, expected at least %d: the suite shrank '
+                       'rather than failed' % (total, FLOOR))
+
+          print('ran %d tests' % total)
+          PY
+
       # Only on failure, and only to say why. rclpy's extension has failed to
       # load in this job three times in three different ways: twice because
       # rcl could not create a log directory under a HOME that had been
@@ -157,30 +182,6 @@ jobs:
           # every command above is allowed to fail without that meaning
           # anything. The job is already red or this never ran.
           exit 0
-      - name: Fail if the run was shorter than the suite
-        run: |
-          python3 - <<'PY'
-          import glob
-          import sys
-          import xml.etree.ElementTree as ET
-
-          FLOOR = 56
-
-          reports = glob.glob('ros_ws/build/*/pytest.xml')
-          if not reports:
-              sys.exit('no pytest.xml was written, so nothing ran')
-
-          total = sum(
-              int(suite.get('tests', 0))
-              for report in reports
-              for suite in ET.parse(report).iter('testsuite'))
-
-          if total < FLOOR:
-              sys.exit('ran %d tests, expected at least %d: the suite shrank '
-                       'rather than failed' % (total, FLOOR))
-
-          print('ran %d tests' % total)
-          PY
 
   # Windows is where a composition container goes wrong in ways Linux does not
   # show: ros2/rclpy#599 has sat since 2024 on a Windows job that got stuck
