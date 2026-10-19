@@ -40,6 +40,7 @@ than none.
 """
 
 import importlib
+import os
 
 #: What each test module cannot be collected without.
 REQUIREMENTS = {
@@ -77,10 +78,33 @@ for module, requirements in REQUIREMENTS.items():
             break
 
 
+#: Where an import would have looked, printed only when one failed.
+SEARCH_PATHS = ('LD_LIBRARY_PATH', 'AMENT_PREFIX_PATH', 'PYTHONPATH')
+
+
 def pytest_report_header(config):
-    """Say what is not being collected, where pytest always prints it."""
+    """Say what is not being collected, why, and where it was looked for."""
     if not unmet:
         return None
 
-    return ['NOT COLLECTING %s: needs %s, which raised %s: %s' % entry
-            for entry in unmet]
+    lines = ['NOT COLLECTING %s: needs %s, which raised %s: %s' % entry
+             for entry in unmet]
+
+    # A library that exists on disk but cannot be opened is a path problem,
+    # not a missing package, and this process is the only one that can see
+    # the paths the tests actually ran with: a later step gets a fresh shell
+    # and sources the distro itself, so it always looks healthy.
+    #
+    # One entry per line, because the question asked of these is whether a
+    # particular directory is in them, and that is unreadable on one line.
+    for name in SEARCH_PATHS:
+        value = os.environ.get(name)
+
+        if not value:
+            lines.append('%s is unset' % name)
+            continue
+
+        lines.append('%s:' % name)
+        lines.extend('    ' + entry for entry in value.split(os.pathsep))
+
+    return lines
