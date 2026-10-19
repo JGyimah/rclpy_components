@@ -1,3 +1,6 @@
 .pytest_cache/
 .rclpy_components/
 .vscode/
+
+# Working notes for the upstream offer, not part of the package
+UPSTREAM.md

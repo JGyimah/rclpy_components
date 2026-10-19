@@ -93,14 +93,14 @@ jobs:
 
   # Windows is where a composition container goes wrong in ways Linux does not
   # show: ros2/rclpy#599 has sat since 2024 on a Windows job that got stuck
-  # rather than failed, and nothing in a Linux run would have caught it. This
-  # job is allowed to fail so that a broken Windows toolchain does not block a
-  # merge, while a hang or a real failure still shows up here rather than in
-  # somebody else's pull request.
+  # rather than failed, and nothing in a Linux run would have caught it.
+  #
+  # This job gates. It was informational while the toolchain was being worked
+  # out, and passing it is now the point: a job allowed to fail cannot catch
+  # the hang coming back, which is the whole reason that pull request stalled.
   windows:
-    name: rolling on windows (informational)
+    name: rolling on windows
     runs-on: windows-2022
-    continue-on-error: true
     timeout-minutes: 45
     steps:
       - uses: ros-tooling/setup-ros@0.7.19
@@ -118,13 +118,18 @@ jobs:
       #   * pkg_resources must guard its pkgutil.ImpImporter call, which
       #     Python 3.12 removed. 79.0.1 guards it; the runner's own does not.
       #
-      # 79.0.1 is the newest release that satisfies all four, so this is a
-      # pin and not an upgrade. Separately, no setuptools in that range ships
-      # the setuptools.extern shim the probe reaches for first, which is why
-      # colcon-python-setup-py comes along: 0.2.9 falls back to
-      # `packaging.specifiers` when the shim is absent.
+      # 79.0.1 is the newest release satisfying all four, and it is pinned
+      # exactly rather than as `<80`. The range happens to resolve to the same
+      # version today, because the 79 series stops there, but a constraint that
+      # is right by accident is not a pin, and this job is offered as proof
+      # that Windows works: it has to resolve the same way next month.
+      #
+      # No setuptools in that range ships the setuptools.extern shim the probe
+      # reaches for first, which is why colcon-python-setup-py comes along —
+      # 0.2.9 falls back to `packaging.specifiers` when the shim is absent. It
+      # is pinned too; it was taking whatever happened to be newest.
       - name: Give the runner tooling that works on Python 3.12
-        run: python -m pip install --upgrade "setuptools<80" colcon-python-setup-py
+        run: python -m pip install --upgrade "setuptools==79.0.1" "colcon-python-setup-py==0.2.9"
       # nose registers a distutils command, and `setup.py --help-commands`,
       # which colcon runs to see what the package can do, loads every
       # registered command. Importing nose imports `imp`, removed in Python
