@@ -19,6 +19,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # Weekly, for the Windows job below. It cannot pass until setup-ros gains
+  # the Pixi-based Windows support of ros-tooling/setup-ros#893, and this is
+  # how that gets noticed without anyone remembering to look.
+  schedule:
+    - cron: '0 6 * * 1'
 
 jobs:
   # A plugin package calls register_nodes from its own setup.py, where the ROS
@@ -202,6 +207,12 @@ jobs:
   windows:
     name: jazzy on windows (informational)
     runs-on: windows-2022
+    # On demand and weekly, not on every commit. It fails every time it runs,
+    # for a reason outside this repository, and a red job that says the same
+    # thing on every push teaches everyone to ignore the colour. Run it from
+    # the Actions tab when Windows is the question, and let the weekly run
+    # answer whether it is still the question.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     continue-on-error: true
     timeout-minutes: 45
     steps:
