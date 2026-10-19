@@ -75,6 +75,10 @@ jobs:
           - distro: rolling
             runner: ubuntu-24.04
     steps:
+      # action-ros-ci clones its own copy into ros_ws, so this is not for the
+      # build: it is for the check below, which runs before the action and
+      # needs the repository's own test/check_requirements.py.
+      - uses: actions/checkout@v7.0.1
       - uses: ros-tooling/setup-ros@0.7.19
         with:
           required-ros-distributions: ${{ matrix.distro }}
@@ -82,14 +86,49 @@ jobs:
       # failure: conftest.py drops the test modules whose dependencies are
       # missing, so the run would collect the five setup-helper tests, pass,
       # and report green having exercised no container at all.
-      - name: Fail if the distro is not actually installed
+      #
+      # Importing rclpy and the index is not enough to know that, and a rolling
+      # job proved it by passing with 16 of 56 tests: rclpy imported, while
+      # composition_interfaces did not, and the two container modules went
+      # quietly. The check asks conftest what it would drop, so it cannot fall
+      # behind the requirements it is checking.
+      - name: Fail if anything the tests need is missing
         run: |
           . /opt/ros/${{ matrix.distro }}/setup.sh
-          python3 -c "import ament_index_python, rclpy; print('${{ matrix.distro }} is installed')"
+          python3 test/check_requirements.py
       - uses: ros-tooling/action-ros-ci@0.4.8
         with:
           package-name: rclpy_components
           target-ros2-distro: ${{ matrix.distro }}
+      # Belt and braces for the guard above, which can only check the
+      # requirements conftest knows about: if a module is ever dropped for a
+      # reason that is not in that table, the suite shrinks and the run still
+      # passes. This fails instead. Raise the floor when tests are added; it
+      # only has to be a number the suite cannot legitimately fall below.
+      - name: Fail if the run was shorter than the suite
+        run: |
+          python3 - <<'PY'
+          import glob
+          import sys
+          import xml.etree.ElementTree as ET
+
+          FLOOR = 56
+
+          reports = glob.glob('ros_ws/build/*/pytest.xml')
+          if not reports:
+              sys.exit('no pytest.xml was written, so nothing ran')
+
+          total = sum(
+              int(suite.get('tests', 0))
+              for report in reports
+              for suite in ET.parse(report).iter('testsuite'))
+
+          if total < FLOOR:
+              sys.exit('ran %d tests, expected at least %d: the suite shrank '
+                       'rather than failed' % (total, FLOOR))
+
+          print('ran %d tests' % total)
+          PY
 
   # Windows is where a composition container goes wrong in ways Linux does not
   # show: ros2/rclpy#599 has sat since 2024 on a Windows job that got stuck
@@ -112,6 +151,8 @@ jobs:
       # run setup.py for a pure-Python package with nothing underneath it.
       # Rolling has no such archive by nature, so Windows coverage here means
       # the newest distro that has one.
+      # As in the ros job: the check below needs the repository itself.
+      - uses: actions/checkout@v7.0.1
       - uses: ros-tooling/setup-ros@0.7.19
         with:
           required-ros-distributions: jazzy
@@ -150,11 +191,11 @@ jobs:
       # did not install is otherwise silence rather than a failure. On Windows
       # it is the more important of the two, since setup-ros skips a distro it
       # has no archive for without saying so.
-      - name: Fail if the distro is not actually installed
+      - name: Fail if anything the tests need is missing
         shell: cmd
         run: |
           call "C:\dev\jazzy\ros2-windows\setup.bat"
-          python -c "import ament_index_python, rclpy; print('jazzy is installed')"
+          python test\check_requirements.py
       - uses: ros-tooling/action-ros-ci@0.4.8
         with:
           package-name: rclpy_components
