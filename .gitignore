@@ -3,4 +3,4 @@
 .vscode/
 
 # Working notes for the upstream offer, not part of the package
-UPSTREAM.md
+UPSTREAM*.md
