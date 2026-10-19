@@ -99,13 +99,22 @@ jobs:
   # out, and passing it is now the point: a job allowed to fail cannot catch
   # the hang coming back, which is the whole reason that pull request stalled.
   windows:
-    name: rolling on windows
+    name: jazzy on windows
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
+      # jazzy rather than rolling, because setup-ros cannot install rolling on
+      # Windows at all: it extracts a published binary archive, and its table
+      # of them covers humble, iron, jazzy, kilted and lyrical. A distro that
+      # is not in that table is skipped by `if (rosDistro in binaryReleases)`
+      # with no warning, which is what this job used to do -- it asked for
+      # rolling, got no ROS, and still went green, because colcon will happily
+      # run setup.py for a pure-Python package with nothing underneath it.
+      # Rolling has no such archive by nature, so Windows coverage here means
+      # the newest distro that has one.
       - uses: ros-tooling/setup-ros@0.7.19
         with:
-          required-ros-distributions: rolling
+          required-ros-distributions: jazzy
       # The runner has Python 3.12, and the ROS 2 Windows tooling sits on the
       # wrong side of four setuptools changes at once. Each one bounds the
       # version from a different direction:
@@ -137,7 +146,45 @@ jobs:
       # nose has been unmaintained for years and nothing here uses it.
       - name: Remove nose, which cannot be imported on Python 3.12
         run: python -m pip uninstall -y nose || true
+      # The same guard the Linux jobs carry, for the same reason: a distro that
+      # did not install is otherwise silence rather than a failure. On Windows
+      # it is the more important of the two, since setup-ros skips a distro it
+      # has no archive for without saying so.
+      - name: Fail if the distro is not actually installed
+        shell: cmd
+        run: |
+          call "C:\dev\jazzy\ros2-windows\setup.bat"
+          python -c "import ament_index_python, rclpy; print('jazzy is installed')"
       - uses: ros-tooling/action-ros-ci@0.4.8
         with:
           package-name: rclpy_components
-          target-ros2-distro: rolling
+          target-ros2-distro: jazzy
+      # action-ros-ci builds on Windows and never tests: `doTests = !isWindows`
+      # is hardcoded, with no input to override it, since
+      # action-ros-ci/pull/712#issuecomment-969495087. It still installs pytest
+      # and colcon-test-result and still reports the job green, so a Windows
+      # job built on the action alone is a compile check wearing the clothes of
+      # a test run. These two steps run by hand exactly what the action runs
+      # for itself on Linux.
+      #
+      # This is the part that matters for ros2/rclpy#599, where the Windows
+      # tests got stuck rather than failed. A build-only job cannot see that;
+      # with timeout-minutes above, these steps turn a hang into a failure with
+      # a log attached.
+      - name: Test, which the action will not do on Windows
+        working-directory: ros_ws
+        shell: cmd
+        run: |
+          call "C:\dev\jazzy\ros2-windows\setup.bat"
+          colcon test --packages-select rclpy_components --merge-install --event-handlers console_direct+
+      # Always, so a failing test step still reports which test failed rather
+      # than only that something did. --all prints every result and --verbose
+      # sets the exit code, which is the order the action uses.
+      - name: Report the test results
+        if: always()
+        working-directory: ros_ws
+        shell: cmd
+        run: |
+          call "C:\dev\jazzy\ros2-windows\setup.bat"
+          colcon test-result --all
+          colcon test-result --verbose
