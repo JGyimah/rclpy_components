@@ -105,6 +105,58 @@ jobs:
       # reason that is not in that table, the suite shrinks and the run still
       # passes. This fails instead. Raise the floor when tests are added; it
       # only has to be a number the suite cannot legitimately fall below.
+      # Only on failure, and only to say why. rclpy's extension has failed to
+      # load in this job three times in three different ways: twice because
+      # rcl could not create a log directory under a HOME that had been
+      # corrupted with an INPUT_* assignment, and once because the extension
+      # itself would not import while sitting on disk. Each symptom was a guess
+      # away from the cause, which is a layer below what the logs print.
+      #
+      # So print that layer. HOME is quoted, because the corruption that broke
+      # this twice was an embedded newline that any unquoted echo would hide.
+      - name: Say why, if any of that failed
+        if: failure()
+        run: |
+          set +e
+          echo "=== HOME, quoted, and what rcl derives from it ==="
+          printf 'HOME=%q\n' "$HOME"
+          echo "ROS_HOME=${ROS_HOME-unset}"
+          echo "ROS_LOG_DIR=${ROS_LOG_DIR-unset}"
+
+          echo "=== the environment the action left behind ==="
+          for name in AMENT_PREFIX_PATH LD_LIBRARY_PATH PYTHONPATH; do
+            printf '%s=%s\n' "$name" "${!name-unset}"
+          done
+
+          . /opt/ros/${{ matrix.distro }}/setup.sh
+
+          echo "=== the extension, and what it links against ==="
+          extension=$(ls /opt/ros/${{ matrix.distro }}/lib/python3*/site-packages/rclpy/_rclpy_pybind11*.so 2>/dev/null | head -1)
+          echo "extension: ${extension:-not found}"
+          if [ -n "$extension" ]; then
+            ldd "$extension" | sort
+            echo "--- unresolved, if any ---"
+            ldd "$extension" | grep 'not found'
+          fi
+
+          echo "=== importing it, with the traceback ==="
+          python3 -c "import rclpy; print('rclpy from', rclpy.__file__)"
+
+          echo "=== what is actually installed ==="
+          dpkg-query -W -f='${binary:Package} ${Version}\n' \
+            'ros-${{ matrix.distro }}-rclpy' \
+            'ros-${{ matrix.distro }}-rcl' \
+            'ros-${{ matrix.distro }}-rcl-logging-spdlog' \
+            'ros-${{ matrix.distro }}-rmw*'
+
+          echo "=== disk, in case a directory could not be created for space ==="
+          df -h .
+          if [ -d /home/runner ]; then df -h /home/runner; fi
+
+          # This step reports; it must not add a second failure of its own, and
+          # every command above is allowed to fail without that meaning
+          # anything. The job is already red or this never ran.
+          exit 0
       - name: Fail if the run was shorter than the suite
         run: |
           python3 - <<'PY'
