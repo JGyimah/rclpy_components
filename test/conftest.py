@@ -27,6 +27,16 @@ pytest 6.2.5 rather than skipping just that file.
 A module dropped for a missing dependency is silence, not a pass, so an
 environment that is meant to have ROS has to be checked for it elsewhere —
 in CI, before the tests run — or a broken one reports as a short green run.
+
+Each drop is reported in pytest's header, because the count alone is not a
+diagnosis: a jazzy job that collected five tests of fifty-six was read four
+different ways before anything printed the import that failed. The module,
+the requirement and the exception are the three things needed, and only this
+file knows all three.
+
+The header is used rather than stderr because pytest captures output during
+collection, which is when this runs, and a swallowed explanation is no better
+than none.
 """
 
 import importlib
@@ -51,10 +61,26 @@ REQUIREMENTS = {
 
 collect_ignore = []
 
+#: (module, requirement, exception) for each drop, for the header below.
+unmet = []
+
 for module, requirements in REQUIREMENTS.items():
     for requirement in requirements:
         try:
             importlib.import_module(requirement)
-        except Exception:  # noqa: BLE001 - any import failure means we cannot run
+        except Exception as error:  # noqa: BLE001 - any import failure means we cannot run
             collect_ignore.append(module)
+            # Collapsed and clipped: an import error can run to several lines,
+            # and the header is read at a glance.
+            detail = ' '.join(str(error).split())[:200]
+            unmet.append((module, requirement, type(error).__name__, detail))
             break
+
+
+def pytest_report_header(config):
+    """Say what is not being collected, where pytest always prints it."""
+    if not unmet:
+        return None
+
+    return ['NOT COLLECTING %s: needs %s, which raised %s: %s' % entry
+            for entry in unmet]
