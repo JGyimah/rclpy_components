@@ -275,6 +275,7 @@ jobs:
       # with timeout-minutes above, these steps turn a hang into a failure with
       # a log attached.
       - name: Test, which the action will not do on Windows
+        id: windows_tests
         working-directory: ros_ws
         shell: cmd
         run: |
@@ -283,8 +284,13 @@ jobs:
       # Always, so a failing test step still reports which test failed rather
       # than only that something did. --all prints every result and --verbose
       # sets the exit code, which is the order the action uses.
+      #
+      # Unless the tests never ran: ros_ws is the action's workspace, and if
+      # the guard above stopped the job the directory does not exist, so
+      # `always()` alone cannot even start the shell here. That failure says
+      # only that a step could not run, on top of the one that matters.
       - name: Report the test results
-        if: always()
+        if: always() && steps.windows_tests.conclusion != 'skipped'
         working-directory: ros_ws
         shell: cmd
         run: |
