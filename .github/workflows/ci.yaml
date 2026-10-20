@@ -101,10 +101,35 @@ jobs:
         run: |
           . /opt/ros/${{ matrix.distro }}/setup.sh
           python3 test/check_requirements.py
+      # The action builds and installs the dependencies; it does not test.
+      # Its own test run happens in an environment it has mangled on the way
+      # there: a jazzy job failed with rclpy unable to load librcl_action.so
+      # while the library was installed, because the LD_LIBRARY_PATH it
+      # exported ended in `/opt/ros/jazzy/lib` followed by a newline and an
+      # `INPUT_ROSDEP-SKIP-KEYS=` assignment, and PYTHONPATH had two paths
+      # concatenated with no separator. Multi-line values written into
+      # GITHUB_ENV do that, and it cannot be fixed from outside the action,
+      # because the action's own test step inherits it.
       - uses: ros-tooling/action-ros-ci@0.4.8
         with:
           package-name: rclpy_components
           target-ros2-distro: ${{ matrix.distro }}
+          skip-tests: true
+      # So the tests run here instead, in a shell that throws the exported
+      # paths away and derives them from the distro and the workspace. The
+      # junit report still lands in ros_ws/build, which the floor below reads.
+      - name: Test in an environment the action has not written to
+        working-directory: ros_ws
+        run: |
+          env -u LD_LIBRARY_PATH -u PYTHONPATH -u AMENT_PREFIX_PATH \
+              -u CMAKE_PREFIX_PATH -u COLCON_PREFIX_PATH bash -c '
+            set -e
+            . /opt/ros/${{ matrix.distro }}/setup.sh
+            if [ -f install/setup.sh ]; then . install/setup.sh; fi
+            colcon test --packages-select rclpy_components \
+                --event-handlers console_direct+
+            colcon test-result --verbose
+          '
       # Belt and braces for the guard above, which can only check the
       # requirements conftest knows about: if a module is ever dropped for a
       # reason that is not in that table, the suite shrinks and the run still
